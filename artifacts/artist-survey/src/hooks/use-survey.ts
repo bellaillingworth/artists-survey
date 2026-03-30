@@ -30,6 +30,20 @@ export type SurveyResultsPayload = {
   remoteErrorMessage?: string;
 };
 
+/** Appended when the browser cannot complete the request to Supabase. */
+const FETCH_NETWORK_HINT =
+  " — Troubleshooting: ensure GitHub Action secrets use the Project URL exactly as in Supabase → Settings → API " +
+  "(https://<ref>.supabase.co, no /rest/v1, no db.* host, no wrapping quotes or line breaks). " +
+  "Resume the project if it is paused. If you restricted the API in Supabase, allow your site origin " +
+  "(e.g. https://….azurestaticapps.net). Try another network or disable extensions that block third-party requests.";
+
+function appendFetchFailureHint(message: string): string {
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
+    return message + FETCH_NETWORK_HINT;
+  }
+  return message;
+}
+
 function formatSupabaseRequestError(err: {
   message: string;
   code?: string;
@@ -49,7 +63,7 @@ function formatSupabaseRequestError(err: {
       "the table must be a real TABLE with SELECT allowed for `anon`, not a view.";
   }
 
-  return msg;
+  return appendFetchFailureHint(msg);
 }
 
 function normalizeRemoteRows(raw: SurveyResponseRow[]): SurveyResponseRow[] {
@@ -75,7 +89,8 @@ async function fetchSurveyResults(): Promise<SurveyResultsPayload> {
       remote = normalizeRemoteRows((data ?? []) as SurveyResponseRow[]);
     }
   } catch (e) {
-    remoteError = e instanceof Error ? e.message : String(e);
+    const raw = e instanceof Error ? e.message : String(e);
+    remoteError = appendFetchFailureHint(raw);
   }
 
   const appendDemo = import.meta.env.VITE_SURVEY_APPEND_DEMO === "true";
