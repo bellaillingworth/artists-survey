@@ -15,27 +15,11 @@ import {
   aggregateSurveyResults,
   type SurveyResponseRow,
 } from "@/lib/survey-aggregate";
-import { SURVEY_DEMO_ROWS } from "@/lib/survey-demo-rows";
 
 export const surveyResultsQueryKey = ["surveyResults"] as const;
 
-export type SurveyResultsPayload = {
-  results: SurveyResults;
-  /** Includes built-in sample rows (empty DB, append mode, or Supabase fetch failed). */
-  isSampleData: boolean;
-  /** Sample rows merged with Supabase (`VITE_SURVEY_APPEND_DEMO=true`). */
-  isAppendDemo: boolean;
-  /** Supabase select failed or client misconfigured; charts show sample data only. */
-  remoteFetchFailed: boolean;
-  remoteErrorMessage?: string;
-};
-
-/** Appended when the browser cannot complete the request to Supabase. */
 const FETCH_NETWORK_HINT =
-  " — Troubleshooting: ensure GitHub Action secrets use the Project URL exactly as in Supabase → Settings → API " +
-  "(https://<ref>.supabase.co, no /rest/v1, no db.* host, no wrapping quotes or line breaks). " +
-  "Resume the project if it is paused. If you restricted the API in Supabase, allow your site origin " +
-  "(e.g. https://….azurestaticapps.net). Try another network or disable extensions that block third-party requests.";
+  " — Troubleshooting: GitHub secrets should match Supabase → Settings → API (project URL https://<ref>.supabase.co, anon key, no quotes or line breaks). Resume project if paused; allow your site origin if API access is restricted.";
 
 function appendFetchFailureHint(message: string): string {
   if (/failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
@@ -59,8 +43,7 @@ function formatSupabaseRequestError(err: {
 
   if (/405|method not allowed/i.test(msg)) {
     msg +=
-      " — Often: VITE_SUPABASE_URL must be your Supabase Project URL (.supabase.co), " +
-      "the table must be a real TABLE with SELECT allowed for `anon`, not a view.";
+      " — Use the Project URL (.supabase.co) and a real table with anon SELECT, not a view-only relation.";
   }
 
   return appendFetchFailureHint(msg);
@@ -76,64 +59,20 @@ function normalizeRemoteRows(raw: SurveyResponseRow[]): SurveyResponseRow[] {
   }));
 }
 
-async function fetchSurveyResults(): Promise<SurveyResultsPayload> {
-  let remote: SurveyResponseRow[] = [];
-  let remoteError: string | undefined;
+async function fetchSurveyResults(): Promise<SurveyResults> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("survey_responses").select("*");
 
-  try {
-    const supabase = getSupabase();
-    const { data, error } = await supabase.from("survey_responses").select("*");
-    if (error) {
-      remoteError = formatSupabaseRequestError(error);
-    } else {
-      remote = normalizeRemoteRows((data ?? []) as SurveyResponseRow[]);
-    }
-  } catch (e) {
-    const raw = e instanceof Error ? e.message : String(e);
-    remoteError = appendFetchFailureHint(raw);
+  if (error) {
+    throw new Error(formatSupabaseRequestError(error));
   }
 
-  const appendDemo = import.meta.env.VITE_SURVEY_APPEND_DEMO === "true";
-
-  let rows: SurveyResponseRow[];
-  let isSampleData: boolean;
-  let isAppendDemo: boolean;
-
-  if (remoteError) {
-    rows = SURVEY_DEMO_ROWS;
-    isSampleData = true;
-    isAppendDemo = false;
-  } else if (appendDemo) {
-    rows = [...SURVEY_DEMO_ROWS, ...remote];
-    isSampleData = true;
-    isAppendDemo = true;
-  } else if (remote.length === 0) {
-    rows = SURVEY_DEMO_ROWS;
-    isSampleData = true;
-    isAppendDemo = false;
-  } else {
-    rows = remote;
-    isSampleData = false;
-    isAppendDemo = false;
-  }
-
+  const rows = normalizeRemoteRows((data ?? []) as SurveyResponseRow[]);
   try {
-    return {
-      results: aggregateSurveyResults(rows),
-      isSampleData,
-      isAppendDemo,
-      remoteFetchFailed: Boolean(remoteError),
-      remoteErrorMessage: remoteError,
-    };
+    return aggregateSurveyResults(rows);
   } catch (e) {
     const hint = e instanceof Error ? e.message : String(e);
-    return {
-      results: aggregateSurveyResults(SURVEY_DEMO_ROWS),
-      isSampleData: true,
-      isAppendDemo: false,
-      remoteFetchFailed: true,
-      remoteErrorMessage: remoteError ?? `Could not aggregate survey rows: ${hint}`,
-    };
+    throw new Error(`Could not aggregate survey rows: ${hint}`);
   }
 }
 
@@ -188,10 +127,7 @@ export function useSubmitSurvey(): UseMutationResult<
   });
 }
 
-export function useGetSurveyResults(): UseQueryResult<
-  SurveyResultsPayload,
-  Error
-> {
+export function useGetSurveyResults(): UseQueryResult<SurveyResults, Error> {
   return useQuery({
     queryKey: surveyResultsQueryKey,
     queryFn: fetchSurveyResults,
