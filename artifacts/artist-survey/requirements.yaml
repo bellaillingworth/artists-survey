@@ -1,0 +1,14 @@
+packages:
+  "recharts": "For rendering stunning academic data visualizations"
+  "framer-motion": "For premium page transitions and micro-interactions"
+  "react-hook-form": "For robust and accessible form state management"
+  "@hookform/resolvers": "For Zod schema validation with react-hook-form"
+  "clsx": "For conditional tailwind class merging"
+  "tailwind-merge": "For merging tailwind classes without conflicts"
+
+images: []
+
+notes:
+  - "The API schema exposes useSubmitSurvey and useGetSurveyResults from @workspace/api-client-react"
+  - "Using a clean academic minimal design system with Lora (serif) and Inter (sans)"
+  - "Primary accent color is #8A3BDB"

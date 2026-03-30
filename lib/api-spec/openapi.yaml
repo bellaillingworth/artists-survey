@@ -1,0 +1,157 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: survey
+    description: Survey operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /survey/responses:
+    post:
+      operationId: submitSurvey
+      tags: [survey]
+      summary: Submit a survey response
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SurveySubmission"
+      responses:
+        "201":
+          description: Survey submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /survey/results:
+    get:
+      operationId: getSurveyResults
+      tags: [survey]
+      summary: Get aggregated survey results
+      responses:
+        "200":
+          description: Aggregated survey results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyResults"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    SurveySubmission:
+      type: object
+      properties:
+        favorite_artist:
+          type: string
+          minLength: 1
+        genre:
+          type: string
+          minLength: 1
+        college_year:
+          type: string
+          enum:
+            - "1st Year"
+            - "2nd Year"
+            - "3rd Year"
+            - "4th Year"
+            - "5th Year or More"
+        platforms:
+          type: array
+          items:
+            type: string
+          minItems: 1
+        other_platform:
+          type: string
+          nullable: true
+      required:
+        - favorite_artist
+        - genre
+        - college_year
+        - platforms
+    SurveyResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - created_at
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    SurveyResults:
+      type: object
+      properties:
+        total_responses:
+          type: integer
+        year_counts:
+          type: array
+          items:
+            $ref: "#/components/schemas/LabelCount"
+        top_artists:
+          type: array
+          items:
+            $ref: "#/components/schemas/LabelCount"
+        genre_counts:
+          type: array
+          items:
+            $ref: "#/components/schemas/LabelCount"
+        platform_counts:
+          type: array
+          items:
+            $ref: "#/components/schemas/LabelCount"
+      required:
+        - total_responses
+        - year_counts
+        - top_artists
+        - genre_counts
+        - platform_counts
+    LabelCount:
+      type: object
+      properties:
+        label:
+          type: string
+        count:
+          type: integer
+      required:
+        - label
+        - count
