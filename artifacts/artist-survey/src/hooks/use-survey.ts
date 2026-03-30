@@ -15,8 +15,20 @@ import {
   aggregateSurveyResults,
   type SurveyResponseRow,
 } from "@/lib/survey-aggregate";
+import { SURVEY_DEMO_ROWS } from "@/lib/survey-demo-rows";
 
 export const surveyResultsQueryKey = ["surveyResults"] as const;
+
+export type SurveyResultsPayload = {
+  results: SurveyResults;
+  /** Includes built-in sample rows (empty DB, append mode, or Supabase fetch failed). */
+  isSampleData: boolean;
+  /** Sample rows merged with Supabase (`VITE_SURVEY_APPEND_DEMO=true`). */
+  isAppendDemo: boolean;
+  /** Supabase select failed or client misconfigured; charts show sample data only. */
+  remoteFetchFailed: boolean;
+  remoteErrorMessage?: string;
+};
 
 function formatSupabaseRequestError(err: {
   message: string;
@@ -33,12 +45,81 @@ function formatSupabaseRequestError(err: {
 
   if (/405|method not allowed/i.test(msg)) {
     msg +=
-      " — Often: VITE_SUPABASE_URL is not your Supabase project URL (e.g. built with static site URL), " +
-      "or `survey_responses` is a VIEW (must be a TABLE), or you are using a read-replica URL. " +
-      "Confirm Dashboard → Settings → API → Project URL, and run `supabase/survey_responses.sql` on a real table.";
+      " — Often: VITE_SUPABASE_URL must be your Supabase Project URL (.supabase.co), " +
+      "the table must be a real TABLE with SELECT allowed for `anon`, not a view.";
   }
 
   return msg;
+}
+
+function normalizeRemoteRows(raw: SurveyResponseRow[]): SurveyResponseRow[] {
+  return raw.map((r) => ({
+    favorite_artist: String(r?.favorite_artist ?? ""),
+    genre: String(r?.genre ?? ""),
+    college_year: String(r?.college_year ?? ""),
+    platforms: r?.platforms ?? "[]",
+    other_platform: r?.other_platform ?? null,
+  }));
+}
+
+async function fetchSurveyResults(): Promise<SurveyResultsPayload> {
+  let remote: SurveyResponseRow[] = [];
+  let remoteError: string | undefined;
+
+  try {
+    const supabase = getSupabase();
+    const { data, error } = await supabase.from("survey_responses").select("*");
+    if (error) {
+      remoteError = formatSupabaseRequestError(error);
+    } else {
+      remote = normalizeRemoteRows((data ?? []) as SurveyResponseRow[]);
+    }
+  } catch (e) {
+    remoteError = e instanceof Error ? e.message : String(e);
+  }
+
+  const appendDemo = import.meta.env.VITE_SURVEY_APPEND_DEMO === "true";
+
+  let rows: SurveyResponseRow[];
+  let isSampleData: boolean;
+  let isAppendDemo: boolean;
+
+  if (remoteError) {
+    rows = SURVEY_DEMO_ROWS;
+    isSampleData = true;
+    isAppendDemo = false;
+  } else if (appendDemo) {
+    rows = [...SURVEY_DEMO_ROWS, ...remote];
+    isSampleData = true;
+    isAppendDemo = true;
+  } else if (remote.length === 0) {
+    rows = SURVEY_DEMO_ROWS;
+    isSampleData = true;
+    isAppendDemo = false;
+  } else {
+    rows = remote;
+    isSampleData = false;
+    isAppendDemo = false;
+  }
+
+  try {
+    return {
+      results: aggregateSurveyResults(rows),
+      isSampleData,
+      isAppendDemo,
+      remoteFetchFailed: Boolean(remoteError),
+      remoteErrorMessage: remoteError,
+    };
+  } catch (e) {
+    const hint = e instanceof Error ? e.message : String(e);
+    return {
+      results: aggregateSurveyResults(SURVEY_DEMO_ROWS),
+      isSampleData: true,
+      isAppendDemo: false,
+      remoteFetchFailed: true,
+      remoteErrorMessage: remoteError ?? `Could not aggregate survey rows: ${hint}`,
+    };
+  }
 }
 
 async function submitSurveyToSupabase(
@@ -76,18 +157,6 @@ async function submitSurveyToSupabase(
   };
 }
 
-async function fetchSurveyResults(): Promise<SurveyResults> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase.from("survey_responses").select("*");
-
-  if (error) {
-    throw new Error(formatSupabaseRequestError(error));
-  }
-
-  const rows = (data ?? []) as SurveyResponseRow[];
-  return aggregateSurveyResults(rows);
-}
-
 export function useSubmitSurvey(): UseMutationResult<
   SurveyResponse,
   Error,
@@ -104,7 +173,10 @@ export function useSubmitSurvey(): UseMutationResult<
   });
 }
 
-export function useGetSurveyResults(): UseQueryResult<SurveyResults, Error> {
+export function useGetSurveyResults(): UseQueryResult<
+  SurveyResultsPayload,
+  Error
+> {
   return useQuery({
     queryKey: surveyResultsQueryKey,
     queryFn: fetchSurveyResults,

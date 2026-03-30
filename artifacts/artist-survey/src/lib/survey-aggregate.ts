@@ -39,23 +39,23 @@ export function aggregateSurveyResults(rows: SurveyResponseRow[]): SurveyResults
   const platformMap = new Map<string, number>();
 
   for (const row of rows) {
-    const year = row.college_year;
+    const year = row.college_year ?? "";
     yearMap.set(year, (yearMap.get(year) ?? 0) + 1);
 
-    const artistNorm = row.favorite_artist
+    const artistNorm = (row.favorite_artist ?? "")
       .trim()
       .toLowerCase()
       .replace(/\b\w/g, (c) => c.toUpperCase());
     artistMap.set(artistNorm, (artistMap.get(artistNorm) ?? 0) + 1);
 
-    const genreNorm = row.genre.trim();
+    const genreNorm = (row.genre ?? "").trim();
     genreMap.set(genreNorm, (genreMap.get(genreNorm) ?? 0) + 1);
 
     const platforms = parsePlatforms(row.platforms);
 
     for (const p of platforms) {
       if (p === "Other" && row.other_platform) {
-        const norm = row.other_platform
+        const norm = String(row.other_platform)
           .trim()
           .toLowerCase()
           .replace(/\b\w/g, (c) => c.toUpperCase());
