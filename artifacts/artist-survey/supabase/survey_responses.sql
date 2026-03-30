@@ -13,6 +13,10 @@ create table if not exists public.survey_responses (
 
 alter table public.survey_responses enable row level security;
 
+-- PostgREST needs table privileges; without these you may see permission or odd HTTP errors.
+grant insert, select on table public.survey_responses to anon;
+grant insert, select on table public.survey_responses to authenticated;
+
 -- Anonymous survey: anyone can submit and read rows (aggregates are computed in the app).
 drop policy if exists "survey_responses_anon_insert" on public.survey_responses;
 create policy "survey_responses_anon_insert"
